@@ -347,34 +347,33 @@ const askGeminiAI = async (userPrompt, userId) => {
 
 const createPaginationButtons = (currentPage, totalPages, userId) => {
   const buttons = [];
-
-  // Create button row
   const row = [];
-
+  
   if (currentPage > 0) {
-    row.push(Api.KeyboardButtonCallback({
+    row.push(new Api.KeyboardButtonCallback({
       text: "⬅️ Previous",
       data: Buffer.from(`prev_${userId}`)
     }));
   }
-
+  
   // Page indicator (not clickable)
-  row.push(Api.KeyboardButtonCallback({
+  row.push(new Api.KeyboardButtonCallback({
     text: `📄 ${currentPage + 1}/${totalPages}`,
     data: Buffer.from(`page_${userId}`)
   }));
-
+  
   if (currentPage < totalPages - 1) {
-    row.push(Api.KeyboardButtonCallback({
+    row.push(new Api.KeyboardButtonCallback({
       text: "Next ➡️",
       data: Buffer.from(`next_${userId}`)
     }));
   }
-
+  
   buttons.push(row);
-
+  
   return buttons;
 };
+
 
 const paginateResults = async (client, userId, results, pageSize = 10) => {
   const totalPages = Math.ceil(results.length / pageSize);
