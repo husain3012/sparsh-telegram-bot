@@ -18,7 +18,7 @@ const GEMINI_SYSTEM_PROMPT = fs.existsSync('prompt.txt')
   : "You are a helpful assistant.";
 
 // Choose your Gemini / Google AI Studio model here:
-const GEMINI_MODEL = "gemini-2.0-flash-exp";  // Supports system instructions
+const GEMINI_MODEL = "gemini-2.0-flash";  // Supports system instructions
 
 const sendHelpMenu = async (client, userId) => {
   await client.sendMessage(userId, {
