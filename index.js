@@ -10,7 +10,16 @@ const apiHash = process.env.API_HASH;
 const storeSession = new StoreSession('/session');
 const FEATURE_FLAG_LLM = process.env.FEATURE_FLAG_LLM === 'true';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_PROMPT = "You are MovieBot, a witty, friendly Telegram bot who loves movies and series. Reply concisely, add fun references and use movie puns. Do NOT list features—just answer naturally.";
+
+// Choose your Gemini / Google AI Studio model here:
+const GEMINI_MODEL = "gemini-2.0-flash";      // Free tier: balanced performance across tasks (multimodal support: text, image, video)  
+
+// Other free-tier options:  
+// const GEMINI_MODEL = "gemini-2.0-flash-lite";   // Free tier: lighter version of 2.0 Flash — cost-efficient for simpler tasks  
+// const GEMINI_MODEL = "gemini-2.5-flash";        // Free tier: newer Flash variant with stronger reasoning and a large context window  
+// const GEMINI_MODEL = "gemini-2.5-flash-lite";   // Free tier: “Lite” version of 2.5 Flash — best for high-throughput low-cost usage  
+
+const GEMINI_PROMPT = "You are MovieBot, a witty, friendly Telegram bot who loves movies and series. Reply concisely, add fun references and movie puns. Do NOT list features—just answer naturally.";
 
 const sendHelpMenu = async (client, userId) => {
   await client.sendMessage(userId, {
@@ -26,8 +35,9 @@ hello bot (for bot info)`
 const askGeminiAI = async (prompt) => {
   if (!FEATURE_FLAG_LLM || !GEMINI_API_KEY) return "AI is currently disabled.";
   try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
     const res = await axios.post(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+      url,
       {
         contents: [
           { parts: [{ text: GEMINI_PROMPT }, { text: prompt }] }
@@ -42,6 +52,7 @@ const askGeminiAI = async (prompt) => {
     );
     return res.data.candidates?.[0]?.content?.parts?.[0]?.text || "No answer from Gemini AI.";
   } catch (e) {
+    console.error("Gemini API error:", e.response?.data || e.message || e);
     return "Error: AI could not reply.";
   }
 };
@@ -62,13 +73,11 @@ try {
       const msgText = newMessage.message.message.trim();
       const userId = newMessage.message.fromId;
 
-      // Improved Greetings/Help Interaction
       if (msgText.toLowerCase() === "hello bot" || msgText.toLowerCase() === "/help" || msgText.toLowerCase() === "/start") {
         await sendHelpMenu(client, userId);
         return;
       }
 
-      // Gemini LLM Command -- Modular, Feature-Flagged
       if (
         FEATURE_FLAG_LLM &&
         (msgText.startsWith("/askgemini") || msgText.startsWith("/askai"))
@@ -85,10 +94,7 @@ try {
         return;
       }
 
-      //////////////////////////////////////////////////////////////////////////
-      ///////// YOUR ORIGINAL SEARCH/LOGIN LOGIC -- UNCHANGED //////////////////
-      //////////////////////////////////////////////////////////////////////////
-
+      // Original search logic below (unchanged)
       if (msgText.includes('/search')) {
         const myId = await client.getMe();
         if (newMessage.message?.peerId?.userId.value === myId.id.value) return;
@@ -124,7 +130,6 @@ try {
               }
             }
           }
-
           for await (const message of client.iterMessages(undefined, {
             search: messageIGet,
             limit: undefined,
@@ -190,19 +195,15 @@ try {
         return;
       }
 
-      //////////////////////////////////////////////////////////////////////////
-      /////////////////////// END ORIGINAL LOGIC ///////////////////////////////
-      //////////////////////////////////////////////////////////////////////////
-
       // Fallback for unknown inputs
       await client.sendMessage(userId, {
         message: "I didn't catch that. Try /search <movie> or /askgemini <question>!",
       });
       await sendHelpMenu(client, userId);
-    }; // messageHandler
+    };
 
     client.addEventHandler(messageHandler, new NewMessage({}));
-  }; // startBot
+  };
 
   startBot();
   console.log('Bot started');
