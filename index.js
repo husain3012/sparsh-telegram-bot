@@ -566,7 +566,7 @@ try {
         await client.markAsRead(userId);
         console.log(`Found ${messageToSend.length} results`);
 
-        if (messageToSend.length > 100) {
+        if (messageToSend.length > 500) {
           await client.sendMessage(userId, {
             message: `Too many results (${messageToSend.length} found). Please be more specific!\n\nTry adding:\n• Year (e.g., 2023)\n• Season (e.g., s01)\n• Episode (e.g., e01)\n\nDon't use season and episode together.`
           });
