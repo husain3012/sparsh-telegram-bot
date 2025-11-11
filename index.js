@@ -13,17 +13,12 @@ const FEATURE_FLAG_LLM = process.env.FEATURE_FLAG_LLM === 'true';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Load system prompt from prompt.txt
-const GEMINI_PROMPT = fs.existsSync('prompt.txt')
+const GEMINI_SYSTEM_PROMPT = fs.existsSync('prompt.txt')
   ? fs.readFileSync('prompt.txt', 'utf8').trim()
   : "You are a helpful assistant.";
 
 // Choose your Gemini / Google AI Studio model here:
-const GEMINI_MODEL = "gemini-2.0-flash";      // Free tier: balanced performance across tasks (multimodal support: text, image, video)
-
-// Other free-tier options:
-// const GEMINI_MODEL = "gemini-2.0-flash-lite";   // Free tier: lighter version of 2.0 Flash — cost-efficient for simpler tasks
-// const GEMINI_MODEL = "gemini-2.5-flash";        // Free tier: newer Flash variant with stronger reasoning and a large context window
-// const GEMINI_MODEL = "gemini-2.5-flash-lite";   // Free tier: “Lite” version of 2.5 Flash — best for high-throughput low-cost usage
+const GEMINI_MODEL = "gemini-2.0-flash-exp";  // Supports system instructions
 
 const sendHelpMenu = async (client, userId) => {
   await client.sendMessage(userId, {
@@ -34,24 +29,35 @@ const sendHelpMenu = async (client, userId) => {
   });
 };
 
-const askGeminiAI = async (prompt) => {
+const askGeminiAI = async (userPrompt) => {
   if (!FEATURE_FLAG_LLM || !GEMINI_API_KEY) return "AI is currently disabled.";
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-    const res = await axios.post(
-      url,
-      {
-        contents: [
-          { parts: [{ text: GEMINI_PROMPT }, { text: prompt }] }
-        ]
+    
+    // Proper format: systemInstruction separate from user message
+    const requestBody = {
+      systemInstruction: {
+        parts: [{ text: GEMINI_SYSTEM_PROMPT }]
       },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": GEMINI_API_KEY
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userPrompt }]
         }
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 512
       }
-    );
+    };
+
+    const res = await axios.post(url, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY
+      }
+    });
+
     return res.data.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
   } catch (e) {
     console.error("Gemini API error:", e.response?.data || e.message || e);
@@ -125,13 +131,14 @@ try {
         if (handled) return;
       }
 
-      // Handle /ask (Gemini)
+      // Handle /ask (Gemini) - properly separate system prompt from user message
       if (FEATURE_FLAG_LLM && msgText.startsWith("/ask")) {
         const userPrompt = msgText.replace(/^\/ask\s*/i, "");
         if (userPrompt.length < 3) {
-          await client.sendMessage(userId, { message: "Ask me something about movies, actors, or TV shows!" });
+          await client.sendMessage(userId, { message: "Ask me something!" });
           return;
         }
+        await client.sendMessage(userId, { message: "🤖 Thinking..." });
         const aiReply = await askGeminiAI(userPrompt);
         await client.sendMessage(userId, { message: aiReply });
         return;
