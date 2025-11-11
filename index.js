@@ -2,7 +2,8 @@ require('dotenv').config();
 const fs = require('fs');
 const { TelegramClient, Api } = require("telegram");
 const { StoreSession } = require("telegram/sessions");
-const { NewMessage, CallbackQuery } = require("telegram/events");
+const { NewMessage } = require("telegram/events");
+const { Raw } = require("telegram/events");
 const input = require("input");
 const axios = require("axios");
 
@@ -64,7 +65,7 @@ const resetDailyCounters = () => {
     globalRateLimits.dailyCount = 0;
     globalRateLimits.lastDailyReset = now;
   }
-  
+
   for (const [userId, limits] of userRateLimits.entries()) {
     if (now - limits.lastReset >= RATE_LIMIT_CONFIG.DAY_WINDOW) {
       limits.dailyCount = 0;
@@ -76,7 +77,7 @@ const resetDailyCounters = () => {
 const checkGlobalRateLimit = () => {
   resetDailyCounters();
   const now = Date.now();
-  
+
   if (globalRateLimits.dailyCount >= RATE_LIMIT_CONFIG.GLOBAL_MAX_REQUESTS_PER_DAY) {
     const resetTime = new Date(globalRateLimits.lastDailyReset + RATE_LIMIT_CONFIG.DAY_WINDOW);
     return {
@@ -84,12 +85,12 @@ const checkGlobalRateLimit = () => {
       reason: `Global daily limit reached (${RATE_LIMIT_CONFIG.GLOBAL_MAX_REQUESTS_PER_DAY} requests/day). Resets at ${resetTime.toLocaleTimeString()}.`
     };
   }
-  
+
   globalRateLimits.requestTimestamps = cleanOldTimestamps(
-    globalRateLimits.requestTimestamps, 
+    globalRateLimits.requestTimestamps,
     RATE_LIMIT_CONFIG.MINUTE_WINDOW
   );
-  
+
   if (globalRateLimits.requestTimestamps.length >= RATE_LIMIT_CONFIG.GLOBAL_MAX_REQUESTS_PER_MINUTE) {
     const oldestRequest = Math.min(...globalRateLimits.requestTimestamps);
     const waitSeconds = Math.ceil((oldestRequest + RATE_LIMIT_CONFIG.MINUTE_WINDOW - now) / 1000);
@@ -98,13 +99,13 @@ const checkGlobalRateLimit = () => {
       reason: `Global rate limit exceeded. Please try again in ${waitSeconds} seconds.`
     };
   }
-  
+
   return { allowed: true };
 };
 
 const checkUserRateLimit = (userId) => {
   resetDailyCounters();
-  
+
   if (!userRateLimits.has(userId)) {
     userRateLimits.set(userId, {
       requestTimestamps: [],
@@ -112,10 +113,10 @@ const checkUserRateLimit = (userId) => {
       lastReset: Date.now(),
     });
   }
-  
+
   const userLimits = userRateLimits.get(userId);
   const now = Date.now();
-  
+
   if (userLimits.dailyCount >= RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_DAY) {
     const resetTime = new Date(userLimits.lastReset + RATE_LIMIT_CONFIG.DAY_WINDOW);
     return {
@@ -123,16 +124,16 @@ const checkUserRateLimit = (userId) => {
       reason: `You've reached your daily limit (${RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_DAY} requests/day). Resets at ${resetTime.toLocaleTimeString()}.`
     };
   }
-  
+
   userLimits.requestTimestamps = cleanOldTimestamps(
     userLimits.requestTimestamps,
     RATE_LIMIT_CONFIG.HOUR_WINDOW
   );
-  
+
   const requestsInLastHour = userLimits.requestTimestamps.filter(
     ts => now - ts < RATE_LIMIT_CONFIG.HOUR_WINDOW
   ).length;
-  
+
   if (requestsInLastHour >= RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_HOUR) {
     const oldestInHour = Math.min(...userLimits.requestTimestamps.filter(
       ts => now - ts < RATE_LIMIT_CONFIG.HOUR_WINDOW
@@ -143,11 +144,11 @@ const checkUserRateLimit = (userId) => {
       reason: `You've reached your hourly limit (${RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_HOUR} requests/hour). Try again in ${waitMinutes} minutes.`
     };
   }
-  
+
   const requestsInLastMinute = userLimits.requestTimestamps.filter(
     ts => now - ts < RATE_LIMIT_CONFIG.MINUTE_WINDOW
   ).length;
-  
+
   if (requestsInLastMinute >= RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_MINUTE) {
     const oldestInMinute = Math.min(...userLimits.requestTimestamps.filter(
       ts => now - ts < RATE_LIMIT_CONFIG.MINUTE_WINDOW
@@ -158,7 +159,7 @@ const checkUserRateLimit = (userId) => {
       reason: `You're sending requests too quickly. Wait ${waitSeconds} seconds.`
     };
   }
-  
+
   return { allowed: true };
 };
 
@@ -166,7 +167,7 @@ const recordRequest = (userId) => {
   const now = Date.now();
   globalRateLimits.requestTimestamps.push(now);
   globalRateLimits.dailyCount++;
-  
+
   const userLimits = userRateLimits.get(userId);
   userLimits.requestTimestamps.push(now);
   userLimits.dailyCount++;
@@ -186,15 +187,15 @@ const getConversationHistory = (userId) => {
       lastActivity: Date.now(),
     });
   }
-  
+
   const conversation = conversationMemory.get(userId);
   const now = Date.now();
   const inactiveTime = now - conversation.lastActivity;
-  
+
   if (inactiveTime > MEMORY_CONFIG.CONTEXT_WINDOW_MINUTES * 60 * 1000) {
     conversation.history = [];
   }
-  
+
   return conversation.history;
 };
 
@@ -205,16 +206,16 @@ const addToConversationHistory = (userId, role, content) => {
       lastActivity: Date.now(),
     });
   }
-  
+
   const conversation = conversationMemory.get(userId);
   conversation.lastActivity = Date.now();
-  
+
   conversation.history.push({
     role: role,
     content: truncateMessage(content),
     timestamp: Date.now(),
   });
-  
+
   if (conversation.history.length > MEMORY_CONFIG.MAX_HISTORY_LENGTH) {
     conversation.history = conversation.history.slice(-MEMORY_CONFIG.MAX_HISTORY_LENGTH);
   }
@@ -238,7 +239,7 @@ const formatHistoryForAPI = (history) => {
 const sendHelpMenu = async (client, userId) => {
   await client.sendMessage(userId, {
     message:
-`🎬 *MovieBot Commands*:
+      `🎬 *MovieBot Commands*:
 • /search <movie or series> – find files
 • /ask <your question> – talk to Gemini AI
 • /stats – view your usage statistics
@@ -250,10 +251,10 @@ const getUserStats = (userId) => {
   if (!userRateLimits.has(userId)) {
     return "You haven't made any AI requests yet.";
   }
-  
+
   const userLimits = userRateLimits.get(userId);
   const now = Date.now();
-  
+
   const requestsToday = userLimits.dailyCount;
   const requestsThisHour = userLimits.requestTimestamps.filter(
     ts => now - ts < RATE_LIMIT_CONFIG.HOUR_WINDOW
@@ -261,11 +262,11 @@ const getUserStats = (userId) => {
   const requestsThisMinute = userLimits.requestTimestamps.filter(
     ts => now - ts < RATE_LIMIT_CONFIG.MINUTE_WINDOW
   ).length;
-  
-  const conversationLength = conversationMemory.has(userId) 
-    ? conversationMemory.get(userId).history.length 
+
+  const conversationLength = conversationMemory.has(userId)
+    ? conversationMemory.get(userId).history.length
     : 0;
-  
+
   return `📊 *Your Usage Stats*
 Today: ${requestsToday}/${RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_DAY}
 This hour: ${requestsThisHour}/${RATE_LIMIT_CONFIG.USER_MAX_REQUESTS_PER_HOUR}
@@ -277,32 +278,32 @@ Global today: ${globalRateLimits.dailyCount}/${RATE_LIMIT_CONFIG.GLOBAL_MAX_REQU
 
 const askGeminiAI = async (userPrompt, userId) => {
   if (!FEATURE_FLAG_LLM || !GEMINI_API_KEY) return "AI is currently disabled.";
-  
+
   const globalCheck = checkGlobalRateLimit();
   if (!globalCheck.allowed) {
     return `⚠️ ${globalCheck.reason}`;
   }
-  
+
   const userCheck = checkUserRateLimit(userId);
   if (!userCheck.allowed) {
     return `⚠️ ${userCheck.reason}`;
   }
-  
+
   recordRequest(userId);
-  
+
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-    
+
     const history = getConversationHistory(userId);
     const formattedHistory = formatHistoryForAPI(history);
-    
+
     const currentMessage = {
       role: "user",
       parts: [{ text: userPrompt }]
     };
-    
+
     const contents = [...formattedHistory, currentMessage];
-    
+
     const requestBody = {
       systemInstruction: {
         parts: [{ text: GEMINI_SYSTEM_PROMPT }]
@@ -322,14 +323,14 @@ const askGeminiAI = async (userPrompt, userId) => {
     });
 
     const aiResponse = res.data.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
-    
+
     addToConversationHistory(userId, 'user', userPrompt);
     addToConversationHistory(userId, 'assistant', aiResponse);
-    
+
     return aiResponse;
   } catch (e) {
     console.error("Gemini API error:", e.response?.data || e.message || e);
-    
+
     if (userRateLimits.has(userId)) {
       const userLimits = userRateLimits.get(userId);
       userLimits.requestTimestamps.pop();
@@ -337,7 +338,7 @@ const askGeminiAI = async (userPrompt, userId) => {
     }
     globalRateLimits.requestTimestamps.pop();
     globalRateLimits.dailyCount--;
-    
+
     return "Error: AI could not reply. Please try again.";
   }
 };
@@ -346,54 +347,54 @@ const askGeminiAI = async (userPrompt, userId) => {
 
 const createPaginationButtons = (currentPage, totalPages, userId) => {
   const buttons = [];
-  
+
   // Create button row
   const row = [];
-  
+
   if (currentPage > 0) {
     row.push(Api.KeyboardButtonCallback({
       text: "⬅️ Previous",
       data: Buffer.from(`prev_${userId}`)
     }));
   }
-  
+
   // Page indicator (not clickable)
   row.push(Api.KeyboardButtonCallback({
     text: `📄 ${currentPage + 1}/${totalPages}`,
     data: Buffer.from(`page_${userId}`)
   }));
-  
+
   if (currentPage < totalPages - 1) {
     row.push(Api.KeyboardButtonCallback({
       text: "Next ➡️",
       data: Buffer.from(`next_${userId}`)
     }));
   }
-  
+
   buttons.push(row);
-  
+
   return buttons;
 };
 
 const paginateResults = async (client, userId, results, pageSize = 10) => {
   const totalPages = Math.ceil(results.length / pageSize);
   let currentPage = 0;
-  
+
   const sendPage = async () => {
     const start = currentPage * pageSize;
     const end = Math.min(start + pageSize, results.length);
-    
+
     // Send results for current page
     for (let i = start; i < end; i++) {
       await client.sendMessage(userId, { message: results[i] });
     }
-    
+
     // Send navigation message with inline buttons
     const navMessage = await client.sendMessage(userId, {
       message: `📦 Showing ${start + 1}-${end} of ${results.length} results`,
       buttons: createPaginationButtons(currentPage, totalPages, userId)
     });
-    
+
     // Store pagination state
     paginationState.set(userId, {
       results: results,
@@ -403,7 +404,7 @@ const paginateResults = async (client, userId, results, pageSize = 10) => {
       messageId: navMessage.id
     });
   };
-  
+
   await sendPage();
 };
 
@@ -427,66 +428,71 @@ try {
 
     // ============= CALLBACK QUERY HANDLER (for inline buttons) =============
     client.addEventHandler(async (event) => {
-      const userId = event.query.userId;
-      const data = event.query.data.toString();
-      
-      if (!paginationState.has(userId)) {
-        await event.answer({ alert: true, message: "⚠️ Pagination expired. Please search again." });
-        return;
-      }
-      
-      const state = paginationState.get(userId);
-      
-      if (data.startsWith('next_')) {
-        if (state.currentPage < state.totalPages - 1) {
-          state.currentPage++;
-          
-          const start = state.currentPage * state.pageSize;
-          const end = Math.min(start + state.pageSize, state.results.length);
-          
-          // Send new page results
-          for (let i = start; i < end; i++) {
-            await client.sendMessage(userId, { message: state.results[i] });
-          }
-          
-          // Update navigation message
-          await client.editMessage(userId, {
-            message: state.messageId,
-            text: `📦 Showing ${start + 1}-${end} of ${state.results.length} results`,
-            buttons: createPaginationButtons(state.currentPage, state.totalPages, userId)
-          });
-          
-          await event.answer({ alert: false });
+      try {
+        const userId = event.query.userId;
+        const data = event.query.data.toString();
+
+        if (!paginationState.has(userId)) {
+          await event.answer({ alert: true, message: "⚠️ Pagination expired. Please search again." });
+          return;
         }
-      } else if (data.startsWith('prev_')) {
-        if (state.currentPage > 0) {
-          state.currentPage--;
-          
-          const start = state.currentPage * state.pageSize;
-          const end = Math.min(start + state.pageSize, state.results.length);
-          
-          // Send previous page results
-          for (let i = start; i < end; i++) {
-            await client.sendMessage(userId, { message: state.results[i] });
+
+        const state = paginationState.get(userId);
+
+        if (data.startsWith('next_')) {
+          if (state.currentPage < state.totalPages - 1) {
+            state.currentPage++;
+
+            const start = state.currentPage * state.pageSize;
+            const end = Math.min(start + state.pageSize, state.results.length);
+
+            // Send new page results
+            for (let i = start; i < end; i++) {
+              await client.sendMessage(userId, { message: state.results[i] });
+            }
+
+            // Update navigation message
+            await client.editMessage(userId, {
+              message: state.messageId,
+              text: `📦 Showing ${start + 1}-${end} of ${state.results.length} results`,
+              buttons: createPaginationButtons(state.currentPage, state.totalPages, userId)
+            });
+
+            await event.answer({ alert: false });
           }
-          
-          // Update navigation message
-          await client.editMessage(userId, {
-            message: state.messageId,
-            text: `📦 Showing ${start + 1}-${end} of ${state.results.length} results`,
-            buttons: createPaginationButtons(state.currentPage, state.totalPages, userId)
+        } else if (data.startsWith('prev_')) {
+          if (state.currentPage > 0) {
+            state.currentPage--;
+
+            const start = state.currentPage * state.pageSize;
+            const end = Math.min(start + state.pageSize, state.results.length);
+
+            // Send previous page results
+            for (let i = start; i < end; i++) {
+              await client.sendMessage(userId, { message: state.results[i] });
+            }
+
+            // Update navigation message
+            await client.editMessage(userId, {
+              message: state.messageId,
+              text: `📦 Showing ${start + 1}-${end} of ${state.results.length} results`,
+              buttons: createPaginationButtons(state.currentPage, state.totalPages, userId)
+            });
+
+            await event.answer({ alert: false });
+          }
+        } else if (data.startsWith('page_')) {
+          // Page indicator clicked - just show info
+          await event.answer({
+            alert: true,
+            message: `You're on page ${state.currentPage + 1} of ${state.totalPages}`
           });
-          
-          await event.answer({ alert: false });
         }
-      } else if (data.startsWith('page_')) {
-        // Page indicator clicked - just show info
-        await event.answer({ 
-          alert: true, 
-          message: `You're on page ${state.currentPage + 1} of ${state.totalPages}` 
-        });
+      } catch (error) {
+        console.error("Callback query error:", error);
       }
-    }, new CallbackQuery());
+    }, new Raw({ types: [Api.UpdateBotCallbackQuery] }));
+
 
     // ============= MESSAGE HANDLER =============
     const messageHandler = async (newMessage) => {
