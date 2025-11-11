@@ -243,9 +243,9 @@ const sendHelpMenu = async (client, userId) => {
 • /clear – clear conversation history
 
 📄 *Pagination Navigation:*
-• Type **next** or **n** for next page
-• Type **prev** or **p** for previous page
-• Type page number (e.g., **5**) to jump`
+• Type /next or /n for next page
+• Type /prev or /p for previous page
+• Type /<page_number> (e.g., /5) to jump to a page`
   });
 };
 
@@ -354,39 +354,30 @@ const paginateResults = async (client, userId, results, pageSize = 10) => {
     const start = pageNum * pageSize;
     const end = Math.min(start + pageSize, results.length);
     
-    // Send results for current page
     for (let i = start; i < end; i++) {
       await client.sendMessage(userId, { message: results[i] });
     }
     
-    // Send navigation message
-    let navText = `\n📦 **Page ${pageNum + 1} of ${totalPages}** (${results.length} total results)\n\n`;
+    let navText = `\n📦 *Page ${pageNum + 1} of ${totalPages}* (${results.length} total results)\n\n`;
     
     if (totalPages > 1) {
-      navText += `📄 **Quick Jump:** `;
-      
-      // Show page numbers
-      const maxPagesToShow = 10;
-      for (let i = 0; i < Math.min(totalPages, maxPagesToShow); i++) {
+      navText += `📄 *Quick Jump:* `;
+      for (let i = 0; i < Math.min(totalPages, 10); i++) {
         navText += `${i + 1}`;
-        if (i < Math.min(totalPages, maxPagesToShow) - 1) navText += ' • ';
+        if (i < Math.min(totalPages, 10) - 1) navText += ' • ';
       }
-      if (totalPages > maxPagesToShow) navText += ' • ...';
-      navText += '\n\n';
-      
-      navText += `**Navigation:**\n`;
-      if (pageNum > 0) navText += `• Type **prev** or **p** for previous\n`;
-      if (pageNum < totalPages - 1) navText += `• Type **next** or **n** for next\n`;
-      navText += `• Type page number (1-${totalPages}) to jump\n`;
+      if (totalPages > 10) navText += ' • ...';
+      navText += `\n\n*Navigation:*\n`;
+      if (pageNum > 0) navText += `• Type /prev or /p for previous page\n`;
+      if (pageNum < totalPages - 1) navText += `• Type /next or /n for next page\n`;
+      navText += `• Type /<page_number> (e.g., /5) to jump to a page\n`;
     }
     
     await client.sendMessage(userId, { message: navText });
   };
   
-  // Send first page
   await sendPage(0);
   
-  // Store pagination state
   paginationState.set(userId, {
     results: results,
     currentPage: 0,
@@ -423,98 +414,37 @@ try {
         const state = paginationState.get(userId);
         const timeSinceActivity = Date.now() - state.lastActivity;
         
-        // Expire after 10 minutes
         if (timeSinceActivity < 10 * 60 * 1000) {
-          // Accept both 'n' and '/n', numbers and '/3'
+          // Accept both '/n' and 'n', numbers and '/3'
           const lowerMsg = msgText.trim().replace(/^\//, '').toLowerCase();
 
-          
-          // Check for next
+          // Next
           if (lowerMsg === 'next' || lowerMsg === 'n') {
             if (state.currentPage < state.totalPages - 1) {
               state.currentPage++;
               state.lastActivity = Date.now();
-              
-              const start = state.currentPage * state.pageSize;
-              const end = Math.min(start + state.pageSize, state.results.length);
-              
-              for (let i = start; i < end; i++) {
-                await client.sendMessage(userId, { message: state.results[i] });
-              }
-              
-              let navText = `\n📦 **Page ${state.currentPage + 1} of ${state.totalPages}** (${state.results.length} total)\n\n`;
-              navText += `📄 **Quick Jump:** `;
-              for (let i = 0; i < Math.min(state.totalPages, 10); i++) {
-                navText += `${i + 1}`;
-                if (i < Math.min(state.totalPages, 10) - 1) navText += ' • ';
-              }
-              if (state.totalPages > 10) navText += ' • ...';
-              navText += '\n\n**Navigation:**\n';
-              if (state.currentPage > 0) navText += `• Type **prev** or **p**\n`;
-              if (state.currentPage < state.totalPages - 1) navText += `• Type **next** or **n**\n`;
-              navText += `• Type page number (1-${state.totalPages})\n`;
-              
-              await client.sendMessage(userId, { message: navText });
+              await paginateResults(client, userId, state.results, state.pageSize);
+              paginationState.get(userId).currentPage = state.currentPage;
             }
             return;
           }
-          
-          // Check for previous
+          // Previous
           if (lowerMsg === 'prev' || lowerMsg === 'previous' || lowerMsg === 'p') {
             if (state.currentPage > 0) {
               state.currentPage--;
               state.lastActivity = Date.now();
-              
-              const start = state.currentPage * state.pageSize;
-              const end = Math.min(start + state.pageSize, state.results.length);
-              
-              for (let i = start; i < end; i++) {
-                await client.sendMessage(userId, { message: state.results[i] });
-              }
-              
-              let navText = `\n📦 **Page ${state.currentPage + 1} of ${state.totalPages}** (${state.results.length} total)\n\n`;
-              navText += `📄 **Quick Jump:** `;
-              for (let i = 0; i < Math.min(state.totalPages, 10); i++) {
-                navText += `${i + 1}`;
-                if (i < Math.min(state.totalPages, 10) - 1) navText += ' • ';
-              }
-              if (state.totalPages > 10) navText += ' • ...';
-              navText += '\n\n**Navigation:**\n';
-              if (state.currentPage > 0) navText += `• Type **prev** or **p**\n`;
-              if (state.currentPage < state.totalPages - 1) navText += `• Type **next** or **n**\n`;
-              navText += `• Type page number (1-${state.totalPages})\n`;
-              
-              await client.sendMessage(userId, { message: navText });
+              await paginateResults(client, userId, state.results, state.pageSize);
+              paginationState.get(userId).currentPage = state.currentPage;
             }
             return;
           }
-          
-          // Check for page number
-          const pageNum = parseInt(msgText);
+          // Page number
+          const pageNum = parseInt(lowerMsg);
           if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= state.totalPages) {
             state.currentPage = pageNum - 1;
             state.lastActivity = Date.now();
-            
-            const start = state.currentPage * state.pageSize;
-            const end = Math.min(start + state.pageSize, state.results.length);
-            
-            for (let i = start; i < end; i++) {
-              await client.sendMessage(userId, { message: state.results[i] });
-            }
-            
-            let navText = `\n📦 **Page ${state.currentPage + 1} of ${state.totalPages}** (${state.results.length} total)\n\n`;
-            navText += `📄 **Quick Jump:** `;
-            for (let i = 0; i < Math.min(state.totalPages, 10); i++) {
-              navText += `${i + 1}`;
-              if (i < Math.min(state.totalPages, 10) - 1) navText += ' • ';
-            }
-            if (state.totalPages > 10) navText += ' • ...';
-            navText += '\n\n**Navigation:**\n';
-            if (state.currentPage > 0) navText += `• Type **prev** or **p**\n`;
-            if (state.currentPage < state.totalPages - 1) navText += `• Type **next** or **n**\n`;
-            navText += `• Type page number (1-${state.totalPages})\n`;
-            
-            await client.sendMessage(userId, { message: navText });
+            await paginateResults(client, userId, state.results, state.pageSize);
+            paginationState.get(userId).currentPage = state.currentPage;
             return;
           }
         } else {
@@ -523,7 +453,7 @@ try {
         }
       }
 
-      // ============= COMMAND HANDLER =============
+      // COMMAND HANDLER (after pagination)
       if (!msgText.startsWith('/')) return;
 
       if (msgText === "/help" || msgText === "/start") {
@@ -539,7 +469,7 @@ try {
 
       if (msgText === "/clear") {
         clearConversationHistory(userId);
-        paginationState.delete(userId); // Also clear pagination
+        paginationState.delete(userId);
         await client.sendMessage(userId, { message: "🗑️ Conversation and pagination history cleared!" });
         return;
       }
@@ -562,7 +492,6 @@ try {
         if (newMessage.message?.peerId?.userId?.value === myId.id.value) {
           return;
         }
-
         if (newMessage.message.peerId.className === 'PeerChat' ||
           newMessage.originalUpdate.className === 'UpdateNewChannelMessage' ||
           newMessage.originalUpdate.className === 'MessageReplyHeader') {
