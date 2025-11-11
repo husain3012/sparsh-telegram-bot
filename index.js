@@ -425,7 +425,9 @@ try {
         
         // Expire after 10 minutes
         if (timeSinceActivity < 10 * 60 * 1000) {
-          const lowerMsg = msgText.toLowerCase();
+          // Accept both 'n' and '/n', numbers and '/3'
+          const lowerMsg = msgText.trim().replace(/^\//, '').toLowerCase();
+
           
           // Check for next
           if (lowerMsg === 'next' || lowerMsg === 'n') {
